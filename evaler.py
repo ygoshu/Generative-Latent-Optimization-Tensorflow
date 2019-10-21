@@ -9,12 +9,13 @@ from util import log
 
 from model import Model
 from input_ops import create_input_ops, check_data_id
+from PIL import Image
 
 import tensorflow as tf
 import time
 import imageio
 import scipy.misc as sm
-
+import numpy
 
 class EvalManager(object):
 
@@ -153,11 +154,30 @@ class Evaler(object):
         log.infov("Completed evaluation.")
 
     def generator(self, num):
-        z = np.random.randn(num, self.config.data_info[3])
-        row_sums = np.sqrt(np.sum(z ** 2, axis=0))
-        z = z / row_sums[np.newaxis, :]
-        x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z})
-        return x_hat
+        z1 = np.random.randn(num, self.config.data_info[3])
+        img2, z_2 = self.dataset_train.get_data('17269')
+        r = open('img_ids_for_class.txt', "r")
+        f = open('thisisz_i', "w+")
+        if (r.mode == "r"):
+           lines = r.readlines()
+           z_all = []
+           for line in lines:
+                line_split = line.split(":")
+                z_i = line_split[-1]
+                f.write(z_i.strip() + " \n")
+                imgi, z_i = self.dataset_train.get_data(z_i.strip())
+                z_all.append(z_i)
+           z_avg = np.mean(np.array(z_all), axis = 0)
+           f.close()
+           #imageio.imwrite('classFor44657_{}.png'.format(self.config.prefix), img1)
+           #z3 = np.mean(np.array([z, z_2]), axis=0)
+           #row_sums = np.sqrt(np.sum(z1 ** 2, axis=0))
+           #z2 = z1 / row_sums[np.newaxis, :]
+           z_avg = z_avg[np.newaxis,:]
+           r.close()
+           x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_avg})
+           return x_hat
+        return self.session.run(self.model.x_recon, feed_dict={self.modle.z: z_2})
 
     def interpolator(self, dataset, bs, num=15):
         transit_num = num - 2
@@ -187,7 +207,8 @@ class Evaler(object):
                 I[h * i:h * (i+1), w * j:w * (j+1), :] = x[i * n + j]
         if c == 1:
             I = I[:, :, 0]
-        return sm.imresize(I, shape)
+        return numpy.array(Image.fromarray(I).resize(shape))
+	#return sm.imresize(I, shape)
 
     def run_single_step(self, batch, step=None, is_train=True):
         _start_time = time.time()
@@ -233,6 +254,8 @@ def main():
     config = parser.parse_args()
 
     if config.dataset == 'MNIST':
+        import sys
+        sys.path.insert(1, '/scratch')
         import datasets.mnist as dataset
     elif config.dataset == 'SVHN':
         import datasets.svhn as dataset
@@ -251,7 +274,8 @@ def main():
     evaler = Evaler(config, dataset_test, dataset_train)
 
     log.warning("dataset: %s", config.dataset)
-    evaler.eval_run()
+    with tf.device('/GPU:0'):
+        evaler.eval_run()
 
 if __name__ == '__main__':
     main()

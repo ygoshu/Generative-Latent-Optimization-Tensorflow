@@ -5,10 +5,11 @@ from __future__ import print_function
 import os.path
 import numpy as np
 import h5py
+import tensorflow as tf
 
 from util import log
 
-__PATH__ = './datasets/mnist'
+__PATH__ = '/scratch//datasets/mnist'
 
 rs = np.random.RandomState(123)
 
@@ -72,15 +73,35 @@ def get_conv_info():
 def get_deconv_info():
     return np.array([[100, 4, 2], [50, 4, 2], [25, 4, 2], [6, 4, 2], [1, 4, 2]])
 
-
-def create_default_splits(is_train=True):
+def create_default_splits(is_train=True, is_few_shot=False, few_shot_class=2):
     ids = all_ids()
 
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+    total_y = np.concatenate((y_train,y_test))
     num_trains = 60000
-
-    dataset_train = Dataset(ids[:num_trains], name='train', is_train=False)
-    dataset_test = Dataset(ids[num_trains:], name='test', is_train=False)
+    few_shot_filtered_ids = []
+    count = 0
+    if (is_few_shot):
+        y_train = y_train
+        train_ids = ids[:num_trains]
+        f = open("img_ids_for_classtest.txt","w+")
+         
+        for train_id in train_ids:
+           is_few_shot_class = total_y[int(train_id)] == few_shot_class
+           if (is_few_shot_class and count <= 10):
+             count+=1
+             f.write("img_index for class " + str(few_shot_class) + " is: " + train_id + "\n")        
+           if (is_few_shot_class and count > 10):
+             continue
+           few_shot_filtered_ids.append(train_id)
+        f.close() 
+        dataset_train = Dataset(few_shot_filtered_ids , name='train', is_train=False)
+        dataset_test = Dataset(ids[num_trains:], name='test', is_train=False) 
+    else:
+        dataset_train = Dataset(ids[:num_trains], name='train', is_train=False)
+        dataset_test = Dataset(ids[num_trains:], name='test', is_train=False)
     return dataset_train, dataset_test
+
 
 
 def all_ids():
@@ -95,3 +116,4 @@ def all_ids():
 
     rs.shuffle(_ids)
     return _ids
+

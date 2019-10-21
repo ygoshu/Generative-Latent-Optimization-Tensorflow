@@ -97,6 +97,7 @@ class Trainer(object):
             allow_soft_placement=True,
             gpu_options=tf.GPUOptions(allow_growth=True),
             device_count={'GPU': 1},
+	    log_device_placement=True 
         )
         self.session = self.supervisor.prepare_or_wait_for_session(config=session_config)
 
@@ -213,6 +214,7 @@ def check_data_path(path):
 
 
 def main():
+    tf.debugging.set_log_device_placement(True)
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=16)
@@ -224,8 +226,10 @@ def main():
     parser.add_argument('--lr_weight_decay', action='store_true', default=False)
     parser.add_argument('--dump_result', action='store_true', default=False)
     config = parser.parse_args()
-
+    
     if config.dataset == 'MNIST':
+        import sys
+        sys.path.insert(1, '/scratch')
         import datasets.mnist as dataset
     elif config.dataset == 'SVHN':
         import datasets.svhn as dataset
@@ -236,17 +240,18 @@ def main():
 
     config.conv_info = dataset.get_conv_info()
     config.deconv_info = dataset.get_deconv_info()
-    dataset_train, dataset_test = dataset.create_default_splits()
+    dataset_train, dataset_test = dataset.create_default_splits(is_few_shot=True)
 
     m, l = dataset_train.get_data(dataset_train.ids[0])
     config.data_info = np.concatenate([np.asarray(m.shape), np.asarray(l.shape)])
 
     trainer = Trainer(config,
-                      dataset_train, dataset_test)
+		      dataset_train, dataset_test)
 
     log.warning("dataset: %s, learning_rate: %f",
-                config.dataset, config.learning_rate)
-    trainer.train(dataset_train)
+		config.dataset, config.learning_rate)
+    with tf.device('/GPU:0'):
+	    trainer.train(dataset_train)
 
 if __name__ == '__main__':
     main()
