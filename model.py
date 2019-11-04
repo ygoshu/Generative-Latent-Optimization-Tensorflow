@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np 
 from ops import bilinear_deconv2d
 
 
@@ -40,13 +41,27 @@ class Model(object):
 
         self.is_training = tf.placeholder_with_default(bool(is_train), [], name='is_training')
 
+        self.ids = tf.placeholder(
+         name='ids', dtype=tf.int32,
+         shape=[self.batch_size, 1]
+        )
+
+
+        self.labels = tf.placeholder(
+            name='lables', dtype=tf.int32,
+            shape=[self.batch_size ,1]
+        )
         self.build(is_train=is_train)
 
-    def get_feed_dict(self, batch_chunk, step=None, is_training=True):
+    def get_feed_dict(self, batch_chunk, labels,  step=None, is_training=True):
+    #    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()	
+   #     total_y = np.concatenate((y_train,y_test))[batch_chunk['id'].astype(int)]
         fd = {
             self.image: batch_chunk['image'],  # [B, h, w, c]
             self.code: batch_chunk['code'],  # [B, d]
-        }
+            self.ids: np.expand_dims(batch_chunk['id'], axis=1),
+            self.labels: labels # np.expand_dims(total_y, axis=1)
+	}
         fd[self.is_train] = is_training
 
         return fd
@@ -64,18 +79,33 @@ class Model(object):
                 local_patch = tf.ones((ksz, ksz, 1, 1))
                 c = pred.get_shape()[-1]
 
+
+                print('='*40)
+                print('pred.shape: ') 
+                print(pred.shape)
+                print('='*40)	
                 # Normalize by kernel size
                 pr_mean = tf.concat([tf.nn.conv2d(x, local_patch, strides=[1, kst, kst, 1], padding='VALID') for x in tf.split(pred, c, axis=3)], axis=3)
                 pr_var = tf.concat([tf.nn.conv2d(tf.square(x), local_patch, strides=[1, kst, kst, 1], padding='VALID') for x in tf.split(pred, c, axis=3)], axis=3)
                 pr_var = (pr_var - tf.square(pr_mean)/(ksz**2)) / (ksz ** 2)
-                pr_mean = pr_mean / (ksz ** 2)
-
+                pr_mean = pr_mean / (ksz ** 2) 
+		
+                print('='*40)
+                print('pr_mean.shape: ')
+                print(pr_mean.shape)
+                print('='*40)	
                 gt_mean = tf.concat([tf.nn.conv2d(x, local_patch, strides=[1, kst, kst, 1], padding='VALID') for x in tf.split(gt, c, axis=3)], axis=3)
                 gt_var = tf.concat([tf.nn.conv2d(tf.square(x), local_patch, strides=[1, kst, kst, 1], padding='VALID') for x in tf.split(gt, c, axis=3)], axis=3)
                 gt_var = (gt_var - tf.square(gt_mean)/(ksz**2)) / (ksz ** 2)
                 gt_mean = gt_mean / (ksz ** 2)
 
-                # scaling by local patch size
+               
+                print('='*40)
+                print('gt_mean: ') 
+                print(gt_mean.shape)
+                print('='*40)	 
+                #weighted_loss = tf.abs(pr_mean - gt_mean) *\ 
+		# scaling by local patch size
                 local_mean_loss = tf.reduce_mean(tf.abs(pr_mean - gt_mean))
                 local_var_loss = tf.reduce_mean(tf.abs(pr_var - gt_var))
             return local_mean_loss + local_var_loss
@@ -113,8 +143,16 @@ class Model(object):
 
         # Build loss {{{
         # =========
-        # self.loss = tf.reduce_mean(tf.abs(self.x - self.x_recon))
-        self.loss = local_moment_loss(self.x, self.x_recon)
+	#weighted_loss = tf.abs(self.x - self.x_recon)
+        #weights = tf.
+        #tf.math.multiply(tf.abs(self.x - self.x_recon), weights) 
+        #self.loss = tf.reduce_mean(tf.abs(self.x - self.x_recon))
+        weights = (tf.cast(tf.math.equal(self.labels, 5), tf.int32) * 49 + 1)
+        weights2 = tf.expand_dims(weights, 1) # weights as N x 1
+        weights3 = tf.expand_dims(weights2, 1) # weights as N x 1 x 1 x 1
+        self.loss = tf.reduce_mean(tf.multiply(tf.abs(self.x - self.x_recon),tf.cast( weights3, tf.float32)))
+        #self.loss = local_moment_loss(self.x, self.x_recon)
+	
         self.z_grad = tf.gradients(self.loss, self.z)
         # }}}
 

@@ -43,8 +43,12 @@ class Trainer(object):
                                                is_training=True)
         _, self.batch_test = create_input_ops(dataset_test, self.batch_size,
                                               is_training=False)
+     
 
-        # --- create model ---
+        (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+        self.total_y = np.concatenate((y_train,y_test))        
+        
+	# --- create model ---
         self.model = Model(config)
 
         # --- optimizer ---
@@ -144,17 +148,22 @@ class Trainer(object):
         fetch = [self.global_step, self.summary_op, self.model.loss,
                  self.model.x_recon, self.check_op, self.g_optimizer]
 
+       # (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+       # total_y = np.concatenate((y_train,y_test))[batch_chunk['id'].astype(int)]
+        total_y_filter = self.total_y[batch_chunk['id'].astype(int)]
+        expanded_y =  np.expand_dims(total_y_filter, axis=1)
+        
         fetch_values = self.session.run(
-            fetch, feed_dict=self.model.get_feed_dict(batch_chunk, step=step)
+            fetch, feed_dict=self.model.get_feed_dict(batch_chunk,labels=expanded_y, step=step)
         )
         [step, summary, loss, x] = fetch_values[:4]
         # }}}
 
         # Optimize the latent vectors {{{
         fetch = [self.model.z, self.model.z_grad, self.model.loss]
-
+        
         fetch_values = self.session.run(
-            fetch, feed_dict=self.model.get_feed_dict(batch_chunk, step=step)
+            fetch, feed_dict=self.model.get_feed_dict(batch_chunk, labels=expanded_y , step=step)
         )
 
         [z, z_grad, loss_g_update] = fetch_values
@@ -164,7 +173,7 @@ class Trainer(object):
         z_update_norm = z_update / norm[:, np.newaxis]
 
         loss_z_update = self.session.run(
-            self.model.loss, feed_dict={self.model.x: batch_chunk['image'], self.model.z: z_update_norm}
+            self.model.loss, feed_dict={ self.model.labels : expanded_y,  self.model.x: batch_chunk['image'], self.model.z: z_update_norm}
         )
         for i in range(len(batch_chunk['id'])):
             dataset.set_data(batch_chunk['id'][i], z_update_norm[i, :])
@@ -240,7 +249,7 @@ def main():
 
     config.conv_info = dataset.get_conv_info()
     config.deconv_info = dataset.get_deconv_info()
-    dataset_train, dataset_test = dataset.create_default_splits(is_few_shot=True)
+    dataset_train, dataset_test = dataset.create_default_splits(is_few_shot=True, few_shot_class=5)
 
     m, l = dataset_train.get_data(dataset_train.ids[0])
     config.data_info = np.concatenate([np.asarray(m.shape), np.asarray(l.shape)])

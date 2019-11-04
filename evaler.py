@@ -156,7 +156,7 @@ class Evaler(object):
     def generator(self, num):
         z1 = np.random.randn(num, self.config.data_info[3])
         img2, z_2 = self.dataset_train.get_data('17269')
-        r = open('img_ids_for_class.txt', "r")
+        r = open('img_ids_for_small_sample_testtxt', "r")
         f = open('thisisz_i', "w+")
         if (r.mode == "r"):
            lines = r.readlines()
@@ -166,16 +166,21 @@ class Evaler(object):
                 z_i = line_split[-1]
                 f.write(z_i.strip() + " \n")
                 imgi, z_i = self.dataset_train.get_data(z_i.strip())
-                z_all.append(z_i)
-           z_avg = np.mean(np.array(z_all), axis = 0)
+                z_all.append(np.array(z_i))
+           z_all = np.array(z_all)
+           z_1 = np.array( np.array([np.sum([z_all[0], z_all[1]], axis = 0)/2]))
+           z_1 = np.append( z_1, np.array( [np.sum([z_all[1], z_all[2]], axis = 0)/2]), axis = 0)
+           z_1 = np.append( z_1, np.array([ np.sum([z_all[0], z_all[2]], axis = 0)/2]), axis = 0)
+           z_1 = np.append(z_1,  np.array([np.sum([z_all[1], z_all[5]], axis = 0)/2]), axis = 0)
+           z_1 = np.append(z_1,  np.array([np.sum([z_all[2], z_all[4]], axis = 0)/2]), axis = 0)
+           z_1 = np.append(z_1,  np.array([np.sum([z_all[6], z_all[2]], axis = 0)/2]), axis = 0)
+           z_1 = np.append(z_1, np.array([np.sum([z_all[8], z_all[2]], axis = 0)/2]), axis = 0)
+           z_1 = np.append(z_1, np.array([np.sum([z_all[0], z_all[3]], axis = 0)/2]), axis = 0) 
            f.close()
-           #imageio.imwrite('classFor44657_{}.png'.format(self.config.prefix), img1)
-           #z3 = np.mean(np.array([z, z_2]), axis=0)
-           #row_sums = np.sqrt(np.sum(z1 ** 2, axis=0))
            #z2 = z1 / row_sums[np.newaxis, :]
-           z_avg = z_avg[np.newaxis,:]
+           #z_1 = z_1[np.newaxis,:]
            r.close()
-           x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_avg})
+           x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_1})
            return x_hat
         return self.session.run(self.model.x_recon, feed_dict={self.modle.z: z_2})
 
@@ -242,7 +247,7 @@ class Evaler(object):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--prefix', type=str, default='default')
     parser.add_argument('--checkpoint_path', type=str, default=None)
     parser.add_argument('--train_dir', type=str)

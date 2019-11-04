@@ -1,6 +1,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from pprint import pprint
+from collections import Counter
 
 import os.path
 import numpy as np
@@ -81,20 +83,24 @@ def create_default_splits(is_train=True, is_few_shot=False, few_shot_class=2):
     num_trains = 60000
     few_shot_filtered_ids = []
     count = 0
+    class_sample_count = Counter()
     if (is_few_shot):
         y_train = y_train
         train_ids = ids[:num_trains]
-        f = open("img_ids_for_classtest.txt","w+")
-         
+        f = open("img_ids_for_small_sample_testtxt","w+")
         for train_id in train_ids:
+           class_sample_count[total_y[int(train_id)]] += 1 
            is_few_shot_class = total_y[int(train_id)] == few_shot_class
-           if (is_few_shot_class and count <= 10):
-             count+=1
-             f.write("img_index for class " + str(few_shot_class) + " is: " + train_id + "\n")        
-           if (is_few_shot_class and count > 10):
+           if (class_sample_count[total_y[int(train_id)]] > 500):
              continue
+           if (is_few_shot_class and class_sample_count[total_y[int(train_id)]] < 11): 
+             f.write("img id for class: " + train_id) 
+           if (is_few_shot_class and class_sample_count[total_y[int(train_id)]] > 10):
+             continue 
            few_shot_filtered_ids.append(train_id)
         f.close() 
+        with open('relativesize.txt', 'w+') as out:
+           pprint(class_sample_count, stream=out)
         dataset_train = Dataset(few_shot_filtered_ids , name='train', is_train=False)
         dataset_test = Dataset(ids[num_trains:], name='test', is_train=False) 
     else:
