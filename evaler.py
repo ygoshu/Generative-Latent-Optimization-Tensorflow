@@ -66,6 +66,9 @@ class Evaler(object):
                                          is_training=False,
                                          shuffle=False)
 
+        (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+        self.total_y = np.concatenate((y_train,y_test))        
+        
         # --- create model ---
         self.model = Model(config)
 
@@ -94,7 +97,7 @@ class Evaler(object):
             log.info("Checkpoint path : %s", self.checkpoint_path)
 
     def eval_run(self):
-        # load checkpoint
+        # load checkpoint///
         if self.checkpoint_path:
             self.saver.restore(self.session, self.checkpoint_path)
             log.info("Loaded from checkpoint!")
@@ -112,11 +115,40 @@ class Evaler(object):
 
         evaler = EvalManager()
 
-        if not (self.config.interpolate or self.config.generate or self.config.reconstruct):
+        if not (self.config.recontrain or self.config.interpolate or self.config.generate or self.config.reconstruct):
             raise ValueError('Please specify at least one task by indicating' +
                              '--reconstruct, --generate, or --interpolate.')
             return
 
+        if self.config.recontrain:
+            try:
+               #r = open('batch_ids_codes_for_few_class_2.txt', "w+")
+               #for s in xrange(max_steps):
+               loss_z_update = 100000
+               s = 0
+               #while (loss_z_update > 0.1):
+               max_steps = 100000
+               min_loss = 10000000 
+               for s in xrange(max_steps):
+                   step, z,  loss_g_update, loss_z_update, batch_chunk, step_time = \
+                       self.run_single_z_update_step(self.batch, self.dataset, step=s, is_train=False)
+                   if (loss_z_update < min_loss):
+                      min_loss = loss_z_update
+                   if s % 10000 == 0: 
+                      self.log_train_step_message(step, z,  loss_g_update, loss_z_update, min_loss, step_time)
+        #              for i in range(len(batch_chunk['id'])):
+                      m, l = self.dataset.get_data(batch_chunk['id'][0])
+                      x_a = self.generator(z)
+                      imageio.imwrite('generate_z_batch_step_{}.png'.format(s), x_a[0])
+                      imageio.imwrite('original_img_from_batch_img_step_{}.png'.format(s), m)
+               #r.write("max steps" + str(max_steps))
+               #r.close()
+ 
+            except Exception as e:
+                coord.request_stop(e)
+
+            log.warning('Completed reconstruction.')
+ 
         if self.config.reconstruct:
             try:
                 for s in xrange(max_steps):
@@ -124,20 +156,40 @@ class Evaler(object):
                         self.run_single_step(self.batch)
                     self.log_step_message(s, loss, step_time)
                     evaler.add_batch(batch_chunk['id'], prediction_pred, prediction_gt)
-
+                    imageio.imwrite('pred_pred_{}.png'.format(s), self.image_grid(prediction_pred))
+                    imageio.imwrite('pred_gt_{}.png'.format(s), self.image_grid(prediction_gt)) 
             except Exception as e:
                 coord.request_stop(e)
 
             evaler.report()
             log.warning('Completed reconstruction.')
 
-        if self.config.generate:
-            x = self.generator(self.batch_size)
-            img = self.image_grid(x)
-            imageio.imwrite('generate_{}.png'.format(self.config.prefix), img)
-            log.warning('Completed generation. Generated samples are save' +
-                        'as generate_{}.png'.format(self.config.prefix))
 
+
+        if self.config.generate:
+            r = open('img_ids_for_small_sample_testtxt', "r")
+            if (r.mode == "r"):
+             lines = r.readlines()
+             z_all = []
+             count = 0
+             for line in lines:
+                 line_split = line.split(":")
+                 z_i = line_split[-1]
+                 imgi, z_x = self.dataset_train.get_data(z_i.strip())
+                 imageio.imwrite('original_img_{}.png'.format(count), imgi) 
+                 z_all.append(np.array(z_x))
+                 count+=1
+             for idx in range(len(z_all) - 1):
+                 z_a = np.sum([z_all[idx]*0.3,  z_all[idx+1]*0.7], axis=0)
+                 z_b = np.sum([z_all[idx]*0.5,  z_all[idx+1]*0.5], axis=0)
+                 z_c = np.sum([z_all[idx]*0.7,  z_all[idx+1]*0.3], axis=0) 
+                 x_a = self.generator(z_a[np.newaxis,:])
+                 imageio.imwrite('generate_3_7_{}.png'.format(idx), self.image_grid(x_a))
+                 x_b = self.generator(z_b[np.newaxis,:])
+                 imageio.imwrite('generate_5_5_{}.png'.format(idx), self.image_grid(x_b)) 
+                 x_c = self.generator(z_c[np.newaxis,:])
+                 imageio.imwrite('generate_7_3_{}.png'.format(idx), self.image_grid(x_c))
+            r.close()
         if self.config.interpolate:
             x = self.interpolator(self.dataset_train, self.batch_size)
             img = self.image_grid(x)
@@ -153,36 +205,9 @@ class Evaler(object):
 
         log.infov("Completed evaluation.")
 
-    def generator(self, num):
-        z1 = np.random.randn(num, self.config.data_info[3])
-        img2, z_2 = self.dataset_train.get_data('17269')
-        r = open('img_ids_for_small_sample_testtxt', "r")
-        f = open('thisisz_i', "w+")
-        if (r.mode == "r"):
-           lines = r.readlines()
-           z_all = []
-           for line in lines:
-                line_split = line.split(":")
-                z_i = line_split[-1]
-                f.write(z_i.strip() + " \n")
-                imgi, z_i = self.dataset_train.get_data(z_i.strip())
-                z_all.append(np.array(z_i))
-           z_all = np.array(z_all)
-           z_1 = np.array( np.array([np.sum([z_all[0], z_all[1]], axis = 0)/2]))
-           z_1 = np.append( z_1, np.array( [np.sum([z_all[1], z_all[2]], axis = 0)/2]), axis = 0)
-           z_1 = np.append( z_1, np.array([ np.sum([z_all[0], z_all[2]], axis = 0)/2]), axis = 0)
-           z_1 = np.append(z_1,  np.array([np.sum([z_all[1], z_all[5]], axis = 0)/2]), axis = 0)
-           z_1 = np.append(z_1,  np.array([np.sum([z_all[2], z_all[4]], axis = 0)/2]), axis = 0)
-           z_1 = np.append(z_1,  np.array([np.sum([z_all[6], z_all[2]], axis = 0)/2]), axis = 0)
-           z_1 = np.append(z_1, np.array([np.sum([z_all[8], z_all[2]], axis = 0)/2]), axis = 0)
-           z_1 = np.append(z_1, np.array([np.sum([z_all[0], z_all[3]], axis = 0)/2]), axis = 0) 
-           f.close()
-           #z2 = z1 / row_sums[np.newaxis, :]
-           #z_1 = z_1[np.newaxis,:]
-           r.close()
-           x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_1})
-           return x_hat
-        return self.session.run(self.model.x_recon, feed_dict={self.modle.z: z_2})
+    def generator(self, z_1):
+        x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_1})
+        return x_hat
 
     def interpolator(self, dataset, bs, num=15):
         transit_num = num - 2
@@ -215,20 +240,81 @@ class Evaler(object):
         return numpy.array(Image.fromarray(I).resize(shape))
 	#return sm.imresize(I, shape)
 
+
     def run_single_step(self, batch, step=None, is_train=True):
         _start_time = time.time()
 
         batch_chunk = self.session.run(batch)
 
+        total_y_filter = self.total_y[batch_chunk['id'].astype(int)]
+        expanded_y =  np.expand_dims(total_y_filter, axis=1)
+ 
         [step, loss, all_targets, all_preds, _] = self.session.run(
             [self.global_step, self.model.loss, self.model.x, self.model.x_recon, self.step_op],
-            feed_dict=self.model.get_feed_dict(batch_chunk)
+            feed_dict=self.model.get_feed_dict(batch_chunk, labels = expanded_y)
         )
 
         _end_time = time.time()
 
         return step, loss, (_end_time - _start_time), batch_chunk, all_preds, all_targets
 
+
+    def run_single_z_update_step(self, batch, dataset, step=None, is_train=True):
+        _start_time = time.time()
+
+        batch_chunk = self.session.run(batch)
+
+
+        total_y_filter = self.total_y[batch_chunk['id'].astype(int)]
+        expanded_y =  np.expand_dims(total_y_filter, axis=1)
+        
+       # Optimize the latent vectors {{{
+        fetch = [self.model.z, self.model.z_grad, self.model.loss]
+        
+        fetch_values = self.session.run(
+            fetch, feed_dict=self.model.get_feed_dict(batch_chunk, labels=expanded_y , step=step)
+        )
+
+        [z, z_grad, loss_g_update] = fetch_values
+
+        alpha = 0.05
+        z_update = z - alpha * z_grad[0]
+        norm = np.sqrt(np.sum(z_update ** 2, axis=1))
+        z_update_norm = z_update / norm[:, np.newaxis]
+
+        loss_z_update = self.session.run(
+            self.model.loss, feed_dict={ self.model.labels : expanded_y,  self.model.x: batch_chunk['image'], self.model.z: z_update_norm}
+        )
+        for i in range(len(batch_chunk['id'])):
+            dataset.set_data(batch_chunk['id'][i], z_update_norm[i, :])
+        # }}}
+
+        _end_time = time.time()
+
+        return step, z,  loss_g_update, loss_z_update, batch_chunk , (_end_time - _start_time)
+
+
+    def log_train_step_message(self, step, z, loss_g_update,
+                         loss_z_update, min_loss, step_time, is_train=True):
+        if step_time == 0:
+            step_time = 0.001
+        log_fn = (is_train and log.info or log.infov)
+        log_fn((" [{split_mode:5s} step {step:4d}] " +
+                "z : {z}"
+                "G update: {loss_g_update:.5f} " +
+                "Z update: {loss_z_update:.5f} " +
+                "Min Loss: {min_loss:.5f}" +
+                "({sec_per_batch:.3f} sec/batch, {instance_per_sec:.3f} instances/sec) "
+                ).format(split_mode=(is_train and 'train' or 'val'),
+                         step=step,
+                         z=z, 
+                         loss_z_update=loss_z_update,
+                         loss_g_update=loss_g_update,
+                         min_loss=min_loss,
+                         sec_per_batch=step_time,
+                         instance_per_sec=self.batch_size / step_time
+                         )
+               )
     def log_step_message(self, step, loss, step_time, is_train=False):
         if step_time == 0: step_time = 0.001
         log_fn = (is_train and log.info or log.infov)
@@ -247,7 +333,7 @@ class Evaler(object):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=5)
     parser.add_argument('--prefix', type=str, default='default')
     parser.add_argument('--checkpoint_path', type=str, default=None)
     parser.add_argument('--train_dir', type=str)
@@ -255,6 +341,7 @@ def main():
     parser.add_argument('--reconstruct', action='store_true', default=False)
     parser.add_argument('--generate', action='store_true', default=False)
     parser.add_argument('--interpolate', action='store_true', default=False)
+    parser.add_argument('--recontrain', action='store_true', default=False)  
     parser.add_argument('--data_id', nargs='*', default=None)
     config = parser.parse_args()
 
@@ -271,13 +358,22 @@ def main():
 
     config.conv_info = dataset.get_conv_info()
     config.deconv_info = dataset.get_deconv_info()
-    dataset_train, dataset_test = dataset.create_default_splits()
+    dataset_train, dataset_test = dataset.create_default_splits(is_few_shot=True,few_shot_class=5)
+
 
     m, l = dataset_train.get_data(dataset_train.ids[0])
     config.data_info = np.concatenate([np.asarray(m.shape), np.asarray(l.shape)])
 
     evaler = Evaler(config, dataset_test, dataset_train)
 
+    imageio.imwrite('pre_tr_eval_{}.png'.format(dataset_train.ids[0]), evaler.image_grid(m))
+    
+    m, l = dataset_test.get_data(dataset_test.ids[0])
+    imageio.imwrite('pre_test_eval_{}.png'.format(dataset_train.ids[0]), evaler.image_grid(m))
+
+    m, l = dataset_test.get_data('10280')
+    imageio.imwrite('pre_eval_10280.png', evaler.image_grid(m))    
+ 
     log.warning("dataset: %s", config.dataset)
     with tf.device('/GPU:0'):
         evaler.eval_run()
