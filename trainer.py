@@ -148,8 +148,6 @@ class Trainer(object):
         fetch = [self.global_step, self.summary_op, self.model.loss,
                  self.model.x_recon, self.check_op, self.g_optimizer]
 
-       # (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-       # total_y = np.concatenate((y_train,y_test))[batch_chunk['id'].astype(int)]
         total_y_filter = self.total_y[batch_chunk['id'].astype(int)]
         expanded_y =  np.expand_dims(total_y_filter, axis=1)
         
@@ -234,6 +232,10 @@ def main():
     parser.add_argument('--alpha', type=float, default=1.0)
     parser.add_argument('--lr_weight_decay', action='store_true', default=False)
     parser.add_argument('--dump_result', action='store_true', default=False)
+    parser.add_argument('--few_shot_class', type=int, default=None)
+    parser.add_argument('--few_shot_cap', type=bool, default=False) 
+    parser.add_argument('--train_sample_cap', type=int, default=None)
+    parser.add_argument('--test_sample_cap', type=int, default=None)
     config = parser.parse_args()
     
     if config.dataset == 'MNIST':
@@ -249,7 +251,7 @@ def main():
 
     config.conv_info = dataset.get_conv_info()
     config.deconv_info = dataset.get_deconv_info()
-    dataset_train, dataset_test = dataset.create_default_splits(is_few_shot=True, few_shot_class=5)
+    dataset_train, dataset_test  = dataset.create_default_splits(config)
 
     m, l = dataset_train.get_data(dataset_train.ids[0])
     config.data_info = np.concatenate([np.asarray(m.shape), np.asarray(l.shape)])

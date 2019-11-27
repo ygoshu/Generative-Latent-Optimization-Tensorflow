@@ -122,11 +122,8 @@ class Evaler(object):
 
         if self.config.recontrain:
             try:
-               #r = open('batch_ids_codes_for_few_class_2.txt', "w+")
-               #for s in xrange(max_steps):
                loss_z_update = 100000
                s = 0
-               #while (loss_z_update > 0.1):
                max_steps = 100000
                min_loss = 10000000 
                for s in xrange(max_steps):
@@ -135,15 +132,11 @@ class Evaler(object):
                    if (loss_z_update < min_loss):
                       min_loss = loss_z_update
                    if s % 10000 == 0: 
-                      self.log_train_step_message(step, z,  loss_g_update, loss_z_update, min_loss, step_time)
-        #              for i in range(len(batch_chunk['id'])):
+                      self.log_train_step_message(step, loss_g_update, loss_z_update, min_loss, step_time)
                       m, l = self.dataset.get_data(batch_chunk['id'][0])
                       x_a = self.generator(z)
                       imageio.imwrite('generate_z_batch_step_{}.png'.format(s), x_a[0])
                       imageio.imwrite('original_img_from_batch_img_step_{}.png'.format(s), m)
-               #r.write("max steps" + str(max_steps))
-               #r.close()
- 
             except Exception as e:
                 coord.request_stop(e)
 
@@ -156,8 +149,6 @@ class Evaler(object):
                         self.run_single_step(self.batch)
                     self.log_step_message(s, loss, step_time)
                     evaler.add_batch(batch_chunk['id'], prediction_pred, prediction_gt)
-                    imageio.imwrite('pred_pred_{}.png'.format(s), self.image_grid(prediction_pred))
-                    imageio.imwrite('pred_gt_{}.png'.format(s), self.image_grid(prediction_gt)) 
             except Exception as e:
                 coord.request_stop(e)
 
@@ -167,29 +158,35 @@ class Evaler(object):
 
 
         if self.config.generate:
-            r = open('img_ids_for_small_sample_testtxt', "r")
-            if (r.mode == "r"):
-             lines = r.readlines()
+          if(config.few_shot_class is not None): 
              z_all = []
-             count = 0
-             for line in lines:
-                 line_split = line.split(":")
-                 z_i = line_split[-1]
-                 imgi, z_x = self.dataset_train.get_data(z_i.strip())
-                 imageio.imwrite('original_img_{}.png'.format(count), imgi) 
+             for train_id in self.dataset_train.few_shot_train_ids:
+                 imgi, z_x = self.dataset_train.get_data(train_id)
+                 imageio.imwrite('original_img_{}.png'.format(train_id), imgi) 
                  z_all.append(np.array(z_x))
-                 count+=1
              for idx in range(len(z_all) - 1):
                  z_a = np.sum([z_all[idx]*0.3,  z_all[idx+1]*0.7], axis=0)
                  z_b = np.sum([z_all[idx]*0.5,  z_all[idx+1]*0.5], axis=0)
                  z_c = np.sum([z_all[idx]*0.7,  z_all[idx+1]*0.3], axis=0) 
+                 z_d = np.sum([z_all[idx]*1,  z_all[idx+1]*0], axis=0)
+                 
                  x_a = self.generator(z_a[np.newaxis,:])
-                 imageio.imwrite('generate_3_7_{}.png'.format(idx), self.image_grid(x_a))
+                 fst_img_id = self.dataset_train.few_shot_train_ids[idx]
+                 snd_img_id = self.dataset_train.few_shot_train_ids[idx+1] 
+                 imageio.imwrite('generate_3_{}_7_{}.png'.format(fst_img_id,snd_img_id), self.image_grid(x_a))
                  x_b = self.generator(z_b[np.newaxis,:])
-                 imageio.imwrite('generate_5_5_{}.png'.format(idx), self.image_grid(x_b)) 
+                 imageio.imwrite('generate_5_{}_5_{}.png'.format(fst_img_id,snd_img_id), self.image_grid(x_b)) 
                  x_c = self.generator(z_c[np.newaxis,:])
-                 imageio.imwrite('generate_7_3_{}.png'.format(idx), self.image_grid(x_c))
-            r.close()
+                 imageio.imwrite('generate_7_{}_3_{}.png'.format(fst_img_id,snd_img_id), self.image_grid(x_c))
+                 x_d = self.generator(z_d[np.newaxis,:])
+                 imageio.imwrite('generate_{}.png'.format(fst_img_id), self.image_grid(x_d))
+          else:
+            x = self.generator(self.batch_size)
+            img = self.image_grid(x)
+            imageio.imwrite('generate_{}.png'.format(self.config.prefix), img)
+            log.warning('Completed generation. Generated samples are save' +
+                        'as generate_{}.png'.format(self.config.prefix)) 
+
         if self.config.interpolate:
             x = self.interpolator(self.dataset_train, self.batch_size)
             img = self.image_grid(x)
@@ -206,9 +203,15 @@ class Evaler(object):
         log.infov("Completed evaluation.")
 
     def generator(self, z_1):
-        x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_1})
-        return x_hat
-
+        if (config.few_shot_class is not None):        
+            x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_1})
+            return x_hat
+        else:
+             z = np.random.randn(num, self.config.data_info[3])
+             row_sums = np.sqrt(np.sum(z ** 2, axis=0))
+             z = z / row_sums[np.newaxis, :]
+             x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z})
+             return x_hat
     def interpolator(self, dataset, bs, num=15):
         transit_num = num - 2
         img = []
@@ -277,8 +280,7 @@ class Evaler(object):
 
         [z, z_grad, loss_g_update] = fetch_values
 
-        alpha = 0.05
-        z_update = z - alpha * z_grad[0]
+        z_update = z - self.config.alpha  * z_grad[0]
         norm = np.sqrt(np.sum(z_update ** 2, axis=1))
         z_update_norm = z_update / norm[:, np.newaxis]
 
@@ -294,20 +296,18 @@ class Evaler(object):
         return step, z,  loss_g_update, loss_z_update, batch_chunk , (_end_time - _start_time)
 
 
-    def log_train_step_message(self, step, z, loss_g_update,
+    def log_train_step_message(self, step,  loss_g_update,
                          loss_z_update, min_loss, step_time, is_train=True):
         if step_time == 0:
             step_time = 0.001
         log_fn = (is_train and log.info or log.infov)
         log_fn((" [{split_mode:5s} step {step:4d}] " +
-                "z : {z}"
                 "G update: {loss_g_update:.5f} " +
                 "Z update: {loss_z_update:.5f} " +
                 "Min Loss: {min_loss:.5f}" +
                 "({sec_per_batch:.3f} sec/batch, {instance_per_sec:.3f} instances/sec) "
                 ).format(split_mode=(is_train and 'train' or 'val'),
                          step=step,
-                         z=z, 
                          loss_z_update=loss_z_update,
                          loss_g_update=loss_g_update,
                          min_loss=min_loss,
@@ -333,7 +333,7 @@ class Evaler(object):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=5)
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--prefix', type=str, default='default')
     parser.add_argument('--checkpoint_path', type=str, default=None)
     parser.add_argument('--train_dir', type=str)
@@ -343,6 +343,10 @@ def main():
     parser.add_argument('--interpolate', action='store_true', default=False)
     parser.add_argument('--recontrain', action='store_true', default=False)  
     parser.add_argument('--data_id', nargs='*', default=None)
+    parser.add_argument('--few_shot_class', type=int, default=None)
+    parser.add_argument('--few_shot_cap', type=bool, default=False) 
+    parser.add_argument('--train_sample_cap', type=int, default=None)
+    parser.add_argument('--test_sample_cap', type=int, default=None)    
     config = parser.parse_args()
 
     if config.dataset == 'MNIST':
@@ -358,7 +362,7 @@ def main():
 
     config.conv_info = dataset.get_conv_info()
     config.deconv_info = dataset.get_deconv_info()
-    dataset_train, dataset_test = dataset.create_default_splits(is_few_shot=True,few_shot_class=5)
+    dataset_train, dataset_test = dataset.create_default_splits(config)
 
 
     m, l = dataset_train.get_data(dataset_train.ids[0])
@@ -366,14 +370,6 @@ def main():
 
     evaler = Evaler(config, dataset_test, dataset_train)
 
-    imageio.imwrite('pre_tr_eval_{}.png'.format(dataset_train.ids[0]), evaler.image_grid(m))
-    
-    m, l = dataset_test.get_data(dataset_test.ids[0])
-    imageio.imwrite('pre_test_eval_{}.png'.format(dataset_train.ids[0]), evaler.image_grid(m))
-
-    m, l = dataset_test.get_data('10280')
-    imageio.imwrite('pre_eval_10280.png', evaler.image_grid(m))    
- 
     log.warning("dataset: %s", config.dataset)
     with tf.device('/GPU:0'):
         evaler.eval_run()

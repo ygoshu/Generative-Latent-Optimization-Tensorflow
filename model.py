@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np 
+import math
 from ops import bilinear_deconv2d
 
 
@@ -22,6 +23,7 @@ class Model(object):
         self.d_dim = self.config.data_info[3]
         self.deconv_info = self.config.deconv_info
         self.conv_info = self.config.conv_info
+        self.few_shot_class = self.config.few_shot_class
 
         # create placeholders for the input
         self.image = tf.placeholder(
@@ -54,8 +56,6 @@ class Model(object):
         self.build(is_train=is_train)
 
     def get_feed_dict(self, batch_chunk, labels,  step=None, is_training=True):
-    #    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()	
-   #     total_y = np.concatenate((y_train,y_test))[batch_chunk['id'].astype(int)]
         fd = {
             self.image: batch_chunk['image'],  # [B, h, w, c]
             self.code: batch_chunk['code'],  # [B, d]
@@ -147,11 +147,14 @@ class Model(object):
         #weights = tf.
         #tf.math.multiply(tf.abs(self.x - self.x_recon), weights) 
         #self.loss = tf.reduce_mean(tf.abs(self.x - self.x_recon))
-        weights = (tf.cast(tf.math.equal(self.labels, 5), tf.int32) * 49 + 1)
-        weights2 = tf.expand_dims(weights, 1) # weights as N x 1
-        weights3 = tf.expand_dims(weights2, 1) # weights as N x 1 x 1 x 1
-        self.loss = tf.reduce_mean(tf.multiply(tf.abs(self.x - self.x_recon),tf.cast( weights3, tf.float32)))
-        #self.loss = local_moment_loss(self.x, self.x_recon)
+        if self.config.few_shot_class is not None:
+          normal_to_few_shot_ration = int(math.ceil(self.config.train_sample_cap/self.config.few_shot_cap))
+          weights = (tf.cast(tf.math.equal(self.labels, self.few_shot_class), tf.int32) * (normal_to_few_shot_ration - 1) + 1)
+          weights2 = tf.expand_dims(weights, 1) # weights as N x 1
+          weights3 = tf.expand_dims(weights2, 1) # weights as N x 1 x 1 x 1
+          self.loss = tf.reduce_mean(tf.multiply(tf.abs(self.x - self.x_recon),tf.cast( weights3, tf.float32)))
+        else:
+          self.loss = local_moment_loss(self.x, self.x_recon)
 	
         self.z_grad = tf.gradients(self.loss, self.z)
         # }}}

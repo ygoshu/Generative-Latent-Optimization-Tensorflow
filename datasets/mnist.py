@@ -20,11 +20,11 @@ rs = np.random.RandomState(123)
 class Dataset(object):
 
     def __init__(self, ids, name='default',
-                 max_examples=None, is_train=True):
+                 max_examples=None, is_train=True, few_shot_train_ids=None):
         self._ids = list(ids)
         self.name = name
         self.is_train = is_train
-
+        self.few_shot_train_ids = few_shot_train_ids
         if max_examples is not None:
             self._ids = self._ids[:max_examples]
 
@@ -51,29 +51,9 @@ class Dataset(object):
 
     def set_data(self, id, z):
         try:
-#            print("\n"*2)
-#            print("="*40)
-#            print("updating z to :" ) 
-#            print(id)
-#            print(type(self.data))
-#            print(self.data[id])
-#            print(self.data[id]['update'])
-#            print(z)           
-#            print(type(z))
-#            print(z.shape) 
-#            m, l = self.get_data(id)
-#            print(l.shape)
-#            print(type(l))
             self.data[id]['update'][...] = z
-            
         except Exception as ex:
-#            print("="*40)
-#            print("failling to set data")
-#            print(repr(ex))
-#            e = sys.exc_info()[0]
-#            print(e)
-#            print("\n"*2) 
-            np.allclose(self.data[id]['update'].value, z)
+           np.allclose(self.data[id]['update'].value, z)
         return
 
     @property
@@ -97,55 +77,43 @@ def get_conv_info():
 def get_deconv_info():
     return np.array([[100, 4, 2], [50, 4, 2], [25, 4, 2], [6, 4, 2], [1, 4, 2]])
 
-def create_default_splits(is_train=True, is_few_shot=False, few_shot_class=2):
+def create_default_splits(config, is_train=True):
     ids = all_ids()
 
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
     total_y = np.concatenate((y_train,y_test))
+    
     num_trains = 60000
     few_shot_filtered_ids = []
-    count = 0
     class_sample_count = Counter()
-    if (is_few_shot):
-        y_train = y_train
+    few_shot_train_ids = []
+    if (config.few_shot_class is not None):
         train_ids = ids[:num_trains]
-        f = open("img_ids_for_small_sample_testtxt","w+")
         for train_id in train_ids:
-           class_sample_count[total_y[int(train_id)]] += 1 
-           is_few_shot_class = total_y[int(train_id)] == few_shot_class
-           if (class_sample_count[total_y[int(train_id)]] > 500):
-             continue
-           if (is_few_shot_class and class_sample_count[total_y[int(train_id)]] < 11): 
-             f.write("img id for class: " + train_id) 
-           if (is_few_shot_class and class_sample_count[total_y[int(train_id)]] > 10):
-             continue 
+           is_few_shot_class = total_y[int(train_id)] == config.few_shot_class
+           is_above_train_sample_cap = class_sample_count[total_y[int(train_id)]] > config.train_sample_cap
+           is_above_few_shot_cap = class_sample_count[total_y[int(train_id)]] > config.few_shot_cap
+           if (not is_few_shot_class and is_above_train_sample_cap) or (is_few_shot_class and is_above_few_shot_cap):
+               continue
+           class_sample_count[total_y[int(train_id)]] += 1                    
            few_shot_filtered_ids.append(train_id)
-        f.close() 
-        with open('relativesize.txt', 'w+') as out:
-           pprint(class_sample_count, stream=out)
-        dataset_train = Dataset(few_shot_filtered_ids , name='train', is_train=False)
-        #dataset_train = Dataset(few_shot_filtered_ids , name='train', is_train=False)
+           if is_few_shot_class:
+               few_shot_train_ids.append(train_id) 
+        dataset_train = Dataset(few_shot_filtered_ids , name='train', is_train=False, few_shot_train_ids=few_shot_train_ids)
         test_ids = ids[num_trains:]
-        existing_few_class_id = set(['4376', '1817', '15794', '47757', '69133', '26211', '69770', '23858', '15558', '60352'])
-        
-
-        num_of_tests = 0
-        k = open("test_idx_sample", "w+")
         final_test = []
         for test_id in test_ids:
-           is_few_shot_class = total_y[int(test_id)] == few_shot_class
-           if (is_few_shot_class and test_id not in existing_few_class_id  and num_of_tests < 6):
-              num_of_tests += 1
-              final_test.append(test_id)
-              k.write(test_id + "\n")
-        k.close()
-        dataset_test = Dataset(final_test, name='test', is_train=False) 
+           if (len(final_test) > config.test_sample_cap):
+               break
+           is_few_shot_class = total_y[int(test_id)] == config.few_shot_class
+           if not is_few_shot_class:
+               continue
+           final_test.append(test_id)
+        dataset_test = Dataset(final_test, name='test', is_train=False)
     else:
         dataset_train = Dataset(ids[:num_trains], name='train', is_train=False)
         dataset_test = Dataset(ids[num_trains:], name='test', is_train=False)
     return dataset_train, dataset_test
-
-
 
 def all_ids():
     id_filename = 'id.txt'
