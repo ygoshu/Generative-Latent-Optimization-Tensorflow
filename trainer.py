@@ -233,7 +233,7 @@ def main():
     parser.add_argument('--lr_weight_decay', action='store_true', default=False)
     parser.add_argument('--dump_result', action='store_true', default=False)
     parser.add_argument('--few_shot_class', type=int, default=None)
-    parser.add_argument('--few_shot_cap', type=bool, default=False) 
+    parser.add_argument('--few_shot_cap', type=int, default=False) 
     parser.add_argument('--train_sample_cap', type=int, default=None)
     parser.add_argument('--test_sample_cap', type=int, default=None)
     config = parser.parse_args()

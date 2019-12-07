@@ -158,7 +158,7 @@ class Evaler(object):
 
 
         if self.config.generate:
-          if(config.few_shot_class is not None): 
+          if(self.config.few_shot_cap > 0): 
              z_all = []
              for train_id in self.dataset_train.few_shot_train_ids:
                  imgi, z_x = self.dataset_train.get_data(train_id)
@@ -180,11 +180,18 @@ class Evaler(object):
                  imageio.imwrite('generate_7_{}_3_{}.png'.format(fst_img_id,snd_img_id), self.image_grid(x_c))
                  x_d = self.generator(z_d[np.newaxis,:])
                  imageio.imwrite('generate_{}.png'.format(fst_img_id), self.image_grid(x_d))
-          else:
-            x = self.generator(self.batch_size)
-            img = self.image_grid(x)
-            imageio.imwrite('generate_{}.png'.format(self.config.prefix), img)
-            log.warning('Completed generation. Generated samples are save' +
+          elif(self.config.few_shot_cap == 0 ):
+             for test_id in self.dataset._ids:
+                  img, z = self.dataset.get_data(test_id)
+                  imageio.imwrite('original_{}.png'.format(test_id), img)
+                  x = self.generator(z[np.newaxis,:])
+                  imageio.imwrite('generate_{}.png'.format(test_id), self.image_grid(x)) 
+          elif(self.config.few_shot_cap == None):
+             #TODO():you changed the signature of this method. fix it.
+             x = self.generator(self.batch_size)
+             img = self.image_grid(x)
+             imageio.imwrite('generate_{}.png'.format(self.config.prefix), img)
+             log.warning('Completed generation. Generated samples are save' +
                         'as generate_{}.png'.format(self.config.prefix)) 
 
         if self.config.interpolate:
@@ -203,7 +210,7 @@ class Evaler(object):
         log.infov("Completed evaluation.")
 
     def generator(self, z_1):
-        if (config.few_shot_class is not None):        
+        if (self.config.few_shot_class is not None):        
             x_hat = self.session.run(self.model.x_recon, feed_dict={self.model.z: z_1})
             return x_hat
         else:
@@ -344,9 +351,11 @@ def main():
     parser.add_argument('--recontrain', action='store_true', default=False)  
     parser.add_argument('--data_id', nargs='*', default=None)
     parser.add_argument('--few_shot_class', type=int, default=None)
-    parser.add_argument('--few_shot_cap', type=bool, default=False) 
+    parser.add_argument('--few_shot_cap', type=int, default=False) 
     parser.add_argument('--train_sample_cap', type=int, default=None)
     parser.add_argument('--test_sample_cap', type=int, default=None)    
+    parser.add_argument('--weight_multiplier', type=int, default=1)
+    parser.add_argument('--alpha', type=float, default=None)
     config = parser.parse_args()
 
     if config.dataset == 'MNIST':
