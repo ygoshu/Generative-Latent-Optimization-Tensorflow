@@ -164,7 +164,13 @@ class Evaler(object):
                  imgi, z_x = self.dataset_train.get_data(train_id)
                  imageio.imwrite('original_img_{}.png'.format(train_id), imgi) 
                  z_all.append(np.array(z_x))
-             for idx in range(len(z_all) - 1):
+             for idx in range(len(z_all)):
+                 if (idx == len(z_all)-1):
+                     x_a = self.generator(z_all[idx][np.newaxis,:] )
+                     img_id = self.dataset_train.few_shot_train_ids[idx]
+                     imageio.imwrite('generate_{}.png'.format(img_id), self.image_grid(x_a))
+                     break
+
                  z_a = np.sum([z_all[idx]*0.3,  z_all[idx+1]*0.7], axis=0)
                  z_b = np.sum([z_all[idx]*0.5,  z_all[idx+1]*0.5], axis=0)
                  z_c = np.sum([z_all[idx]*0.7,  z_all[idx+1]*0.3], axis=0) 
@@ -356,6 +362,7 @@ def main():
     parser.add_argument('--test_sample_cap', type=int, default=None)    
     parser.add_argument('--weight_multiplier', type=int, default=1)
     parser.add_argument('--alpha', type=float, default=None)
+    parser.add_argument('--ignore_weighting', action='store_true', default=False)
     config = parser.parse_args()
 
     if config.dataset == 'MNIST':

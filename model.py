@@ -147,8 +147,8 @@ class Model(object):
         #weights = tf.
         #tf.math.multiply(tf.abs(self.x - self.x_recon), weights) 
         #self.loss = tf.reduce_mean(tf.abs(self.x - self.x_recon))
-        if self.config.few_shot_class is not None:
-          normal_to_few_shot_ration = int(math.ceil(self.config.train_sample_cap/self.config.few_shot_cap))
+        if  not self.config.ignore_weighting and  self.config.few_shot_class is not None and self.config.few_shot_cap != 0:     
+          normal_to_few_shot_ration = int(math.ceil(self.config.train_sample_cap/self.config.few_shot_cap)) * self.config.weight_multiplier
           weights = (tf.cast(tf.math.equal(self.labels, self.few_shot_class), tf.int32) * (normal_to_few_shot_ration - 1) + 1)
           weights2 = tf.expand_dims(weights, 1) # weights as N x 1
           weights3 = tf.expand_dims(weights2, 1) # weights as N x 1 x 1 x 1

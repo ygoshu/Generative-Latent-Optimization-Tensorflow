@@ -236,6 +236,8 @@ def main():
     parser.add_argument('--few_shot_cap', type=int, default=False) 
     parser.add_argument('--train_sample_cap', type=int, default=None)
     parser.add_argument('--test_sample_cap', type=int, default=None)
+    parser.add_argument('--weight_multiplier', type=int, default=1)
+    parser.add_argument('--ignore_weighting', action='store_true', default=False)
     config = parser.parse_args()
     
     if config.dataset == 'MNIST':
